@@ -49,6 +49,9 @@ label{display:flex;flex-direction:column;gap:5px;font-size:13px;color:var(--mute
 input,select{font:500 16px var(--f-mono);color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px 10px;width:100%;min-width:0}
 input:focus-visible,select:focus-visible,button:focus-visible{outline:2px solid var(--gold);outline-offset:1px}
 .hint{font-size:12.5px;color:var(--muted);margin:0}
+.autorow{display:flex;flex-direction:column;gap:4px}
+label.chk{flex-direction:row;align-items:center;gap:9px;color:var(--ink);font-size:14px}
+label.chk input{width:20px;height:20px;padding:0;accent-color:var(--gold);flex:none}
 .seg{display:grid;grid-template-columns:1fr 1fr;background:var(--bg);border:1px solid var(--line);border-radius:9px;padding:3px;gap:3px}
 .seg button{font:650 15px var(--f-display);border:0;border-radius:7px;padding:9px;background:transparent;color:var(--muted);cursor:pointer}
 .seg button[aria-pressed="true"].buy{background:var(--gain);color:#fff}
@@ -185,7 +188,8 @@ footer{font-size:12.5px;color:var(--muted);max-width:75ch}
             <input id="rate" type="number" inputmode="decimal" step="0.0001" value="1.1122">
           </label>
         </div>
-        <p class="hint">Le solde ne compte pas le crédit bonus de 2 000 €. Le taux EUR/USD se lit dans l'onglet Cotations ; 1,1122 est celui déduit de ton trade du 28/10.</p>
+        <p class="hint">Le solde ne compte pas le crédit bonus de 2 000 €. </p>
+        <div class="autorow"><label class="chk" for="autoRate"><input id="autoRate" type="checkbox" checked> Mettre à jour le taux EUR/USD à chaque ouverture</label><span class="hint" id="rateStatus"></span></div>
         <label for="lev">Levier (facultatif, pour la marge)
           <input id="lev" type="number" inputmode="numeric" step="1" placeholder="ex. 100 pour 1:100">
         </label>
@@ -264,8 +268,8 @@ footer{font-size:12.5px;color:var(--muted);max-width:75ch}
   function spec(){var k=$("inst").value;if(k==="CUSTOM")return{c:val("contract"),p:val("pointSize"),u:"unités"};return SPECS[k]}
   function decs(p){var s=String(p);return s.indexOf(".")<0?0:s.split(".")[1].length}
 
-  function save(){try{var o={dir:dir};ids.forEach(function(i){o[i]=$(i).value});localStorage.setItem(KEY,JSON.stringify(o))}catch(e){}}
-  function load(){try{var o=JSON.parse(localStorage.getItem(KEY)||"null");if(!o)return;ids.forEach(function(i){if(o[i]!=null)$(i).value=o[i]});if(o.dir)dir=o.dir;if(o.pipSize==null&&SPECS[o.inst])$("pipSize").value=SPECS[o.inst].pip}catch(e){}}
+  function save(){try{var o={dir:dir,autoRate:$("autoRate").checked};ids.forEach(function(i){o[i]=$(i).value});localStorage.setItem(KEY,JSON.stringify(o))}catch(e){}}
+  function load(){try{var o=JSON.parse(localStorage.getItem(KEY)||"null");if(!o)return;ids.forEach(function(i){if(o[i]!=null)$(i).value=o[i]});if(o.dir)dir=o.dir;if(o.autoRate===false)$("autoRate").checked=false;if(o.pipSize==null&&SPECS[o.inst])$("pipSize").value=SPECS[o.inst].pip}catch(e){}}
 
   function setDir(d){dir=d;$("dirBuy").setAttribute("aria-pressed",d===1);$("dirSell").setAttribute("aria-pressed",d===-1);calc()}
 
@@ -360,6 +364,31 @@ footer{font-size:12.5px;color:var(--muted);max-width:75ch}
     save();
   }
 
+  // Taux EUR/USD automatique
+  function status(t){$("rateStatus").textContent=t}
+  function getJSON(u){var c=window.AbortController?new AbortController():null;var t=setTimeout(function(){if(c)c.abort()},6000);
+    return fetch(u,c?{signal:c.signal,cache:"no-store"}:{cache:"no-store"}).then(function(r){clearTimeout(t);if(!r.ok)throw new Error(r.status);return r.json()})}
+  function fk(j){return{r:j.rates&&j.rates.USD,d:j.date,s:"BCE"}}
+  var SOURCES=[
+    {u:"https://api.frankfurter.dev/v1/latest?base=EUR&symbols=USD",f:fk},
+    {u:"https://api.frankfurter.app/latest?from=EUR&to=USD",f:fk},
+    {u:"https://open.er-api.com/v6/latest/EUR",f:function(j){return{r:j.rates&&j.rates.USD,d:new Date(j.time_last_update_unix*1000).toISOString().slice(0,10),s:"ExchangeRate-API"}}}
+  ];
+  var busy=false;
+  function refreshRate(){
+    if(!$("autoRate").checked){status("Taux saisi à la main : coche la case pour revenir à la mise à jour automatique.");return}
+    if(busy)return;busy=true;status("Mise à jour du taux…");
+    var i=0;
+    (function next(){
+      if(i>=SOURCES.length){busy=false;status("Pas de connexion : dernier taux enregistré utilisé ("+String($("rate").value).replace(".",",")+").");return}
+      var s=SOURCES[i++];
+      getJSON(s.u).then(function(j){var o=s.f(j);if(!(o.r>0.5&&o.r<2))throw new Error("taux");
+        $("rate").value=Number(o.r).toFixed(4);calc();busy=false;
+        status("Taux "+o.s+" du "+String(o.d).split("-").reverse().join("/")+" · actualisé à "+new Date().toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"}));
+      }).catch(next);
+    })();
+  }
+
   load();
   ids.forEach(function(i){$(i).addEventListener("input",calc)});
   $("inst").addEventListener("change",function(){
@@ -370,8 +399,12 @@ footer{font-size:12.5px;color:var(--muted);max-width:75ch}
   $("rlev").addEventListener("click",function(e){var b=e.target.closest("button[data-tp]");if(!b)return;$(b.dataset.tp).value=b.dataset.p;calc()});
   $("cApply").addEventListener("click",function(){
     var s=spec(),cu=Math.abs(val("cOut")-val("cIn"))*val("cLots")*s.c,ce=Math.abs(val("cEur"));
-    if(cu>0&&ce>0){$("rate").value=(cu/ce).toFixed(4);calc()}});
+    if(cu>0&&ce>0){$("rate").value=(cu/ce).toFixed(4);$("autoRate").checked=false;status("Taux calculé depuis ton trade : la mise à jour automatique est désactivée.");calc()}});
+  $("rate").addEventListener("input",function(){if($("autoRate").checked){$("autoRate").checked=false;save()}status("Taux saisi à la main : coche la case pour revenir à la mise à jour automatique.")});
+  $("autoRate").addEventListener("change",function(){save();refreshRate()});
+  document.addEventListener("visibilitychange",function(){if(document.visibilityState==="visible")refreshRate()});
   setDir(dir);
+  refreshRate();
 })();
 </script>
 
