@@ -106,6 +106,9 @@ th:first-child,td:first-child{text-align:left}
 td{font-family:var(--f-mono);font-variant-numeric:tabular-nums}
 tr.cur td{background:var(--gold-soft);color:var(--ink)}
 td.l{color:var(--loss)} td.g{color:var(--gain)}
+.panel.risk{border-color:var(--gold)}
+.auto{font:700 10.5px var(--f-mono);letter-spacing:.05em;text-transform:uppercase;color:var(--gold);background:var(--gold-soft);border-radius:4px;padding:1px 5px;margin-left:4px}
+.hint.bad{color:var(--loss);font-weight:600}
 .big{font:650 26px var(--f-mono);color:var(--gold)}
 details summary{cursor:pointer;font-weight:600;font-size:14px}
 details[open] summary{margin-bottom:12px}
@@ -119,6 +122,20 @@ footer{font-size:12.5px;color:var(--muted);max-width:75ch}
     <h1>Calculateur lots et risque</h1>
     <p>Combien vaut ton volume en euros, combien tu perds au stop loss et combien tu gagnes à chaque take profit. Compte en EUR, instruments cotés en USD.</p>
   </header>
+
+  <section class="panel risk" aria-labelledby="h-inv">
+    <h2 id="h-inv">Quel volume pour un risque donné ?</h2>
+    <div class="row">
+      <label for="riskEur">Risque max (€)
+        <input id="riskEur" type="number" inputmode="decimal" step="any" value="50">
+      </label>
+      <label for="riskPct">ou en % du solde
+        <input id="riskPct" type="number" inputmode="decimal" step="0.1" placeholder="ex. 1">
+      </label>
+    </div>
+    <div><span class="big num" id="invLots">—</span> <span class="hint" id="invTxt"></span></div>
+    <label class="chk" for="autoLots"><input id="autoLots" type="checkbox" checked> Reporter ce volume dans la position</label>
+  </section>
 
   <div class="grid">
     <!-- Saisie -->
@@ -149,7 +166,7 @@ footer{font-size:12.5px;color:var(--muted);max-width:75ch}
           <button type="button" class="sell" id="dirSell" aria-pressed="true">Sell</button>
         </div>
         <div class="row">
-          <label for="lots">Volume (lots)
+          <label for="lots"><span>Volume (lots) <span class="auto" id="lotsAuto">auto</span></span>
             <input id="lots" type="number" inputmode="decimal" step="0.01" min="0" value="0.05">
           </label>
           <label for="entry">Prix d'entrée
@@ -230,19 +247,6 @@ footer{font-size:12.5px;color:var(--muted);max-width:75ch}
         <div class="scen" id="rlev"></div>
       </section>
 
-      <section class="panel" aria-labelledby="h-inv">
-        <h2 id="h-inv">Quel volume pour un risque donné ?</h2>
-        <div class="row">
-          <label for="riskEur">Risque max (€)
-            <input id="riskEur" type="number" inputmode="decimal" step="any" value="50">
-          </label>
-          <label for="riskPct">ou en % du solde
-            <input id="riskPct" type="number" inputmode="decimal" step="0.1" placeholder="ex. 1">
-          </label>
-        </div>
-        <div><span class="big num" id="invLots">—</span> <span class="hint" id="invTxt"></span></div>
-      </section>
-
       <section class="panel" aria-labelledby="h-tab">
         <h2 id="h-tab">Comparatif des volumes</h2>
         <div class="tw"><table id="tab"></table></div>
@@ -268,12 +272,20 @@ footer{font-size:12.5px;color:var(--muted);max-width:75ch}
   function spec(){var k=$("inst").value;if(k==="CUSTOM")return{c:val("contract"),p:val("pointSize"),u:"unités"};return SPECS[k]}
   function decs(p){var s=String(p);return s.indexOf(".")<0?0:s.split(".")[1].length}
 
-  function save(){try{var o={dir:dir,autoRate:$("autoRate").checked};ids.forEach(function(i){o[i]=$(i).value});localStorage.setItem(KEY,JSON.stringify(o))}catch(e){}}
-  function load(){try{var o=JSON.parse(localStorage.getItem(KEY)||"null");if(!o)return;ids.forEach(function(i){if(o[i]!=null)$(i).value=o[i]});if(o.dir)dir=o.dir;if(o.autoRate===false)$("autoRate").checked=false;if(o.pipSize==null&&SPECS[o.inst])$("pipSize").value=SPECS[o.inst].pip}catch(e){}}
+  function save(){try{var o={dir:dir,autoRate:$("autoRate").checked,autoLots:$("autoLots").checked};ids.forEach(function(i){o[i]=$(i).value});localStorage.setItem(KEY,JSON.stringify(o))}catch(e){}}
+  function load(){try{var o=JSON.parse(localStorage.getItem(KEY)||"null");if(!o)return;ids.forEach(function(i){if(o[i]!=null)$(i).value=o[i]});if(o.dir)dir=o.dir;if(o.autoRate===false)$("autoRate").checked=false;if(o.autoLots===false)$("autoLots").checked=false;if(o.pipSize==null&&SPECS[o.inst])$("pipSize").value=SPECS[o.inst].pip}catch(e){}}
 
   function setDir(d){dir=d;$("dirBuy").setAttribute("aria-pressed",d===1);$("dirSell").setAttribute("aria-pressed",d===-1);calc()}
 
   function calc(){
+    var sp0=spec(),e0=val("entry"),sl0=val("sl"),r0=val("rate"),b0=val("balance");
+    var rEur=val("riskEur"),rPct=val("riskPct");
+    if(isFinite(rPct)&&rPct>0&&isFinite(b0)&&b0>0)rEur=b0*rPct/100;
+    var dist=Math.abs(sl0-e0),lotsMax=NaN;
+    if(isFinite(rEur)&&rEur>0&&isFinite(dist)&&dist>0&&r0>0&&sp0.c>0)lotsMax=Math.floor((rEur*r0)/(dist*sp0.c)*100+1e-9)/100;
+    var autoL=$("autoLots").checked;
+    $("lotsAuto").hidden=!autoL;
+    if(autoL&&isFinite(lotsMax))$("lots").value=Math.max(lotsMax,0.01).toFixed(2);
     var s=spec(),lots=val("lots"),entry=val("entry"),sl=val("sl"),rate=val("rate"),bal=val("balance"),lev=val("lev");
     $("customRow").hidden=$("inst").value!=="CUSTOM";
     var units=lots*s.c;                       // ex. 0,05 × 100 = 5 oz
@@ -337,15 +349,15 @@ footer{font-size:12.5px;color:var(--muted);max-width:75ch}
     pts.forEach(function(x){if(!isFinite(x.p))return;html+='<div class="mk '+x.c+'" style="top:'+y(x.p)+'px"><span class="p">'+nf(x.p,pd)+'</span><span class="ln"></span><span class="lb">'+x.l+'</span></div>'});
     $("ladder").innerHTML=html;
 
-    // Inverse
-    var rEur=val("riskEur"),rPct=val("riskPct");
-    if(isFinite(rPct)&&rPct>0&&isFinite(bal))rEur=bal*rPct/100;
-    var dist=Math.abs(sl-entry);
-    if(isFinite(rEur)&&rEur>0&&dist>0&&isFinite(dist)){
-      var lotsMax=Math.floor((rEur*rate)/(dist*s.c)*100+1e-9)/100;
+    // Volume pour un risque donné
+    $("invTxt").className="hint";
+    if(isFinite(lotsMax)&&lotsMax>=0.01){
       $("invLots").textContent=nf(lotsMax,2)+" lot";
-      $("invTxt").textContent=lotsMax>0?"max pour risquer "+eur(rEur)+" avec un stop à "+fp(dist)+" de l'entrée (perte réelle : "+eur(lotsMax*s.c*dist/rate)+")":"le stop est trop loin pour ce risque, même à 0,01 lot ("+eur(0.01*s.c*dist/rate)+")";
-    }else{$("invLots").textContent="—";$("invTxt").textContent="indique un risque et un stop loss";}
+      $("invTxt").textContent="max pour risquer "+eur(rEur)+(isFinite(rPct)&&rPct>0?" ("+nf(rPct,2)+" % du solde)":"")+" avec un stop à "+fp(dist)+" · perte réelle "+eur(lotsMax*s.c*dist/rate);
+    }else if(isFinite(lotsMax)){
+      $("invLots").textContent="0,01 lot";$("invTxt").className="hint bad";
+      $("invTxt").textContent="Même le plus petit volume dépasse ce risque : perte de "+eur(0.01*s.c*dist/rate)+" au stop. Rapproche ton stop ou augmente le risque.";
+    }else{$("invLots").textContent="—";$("invTxt").textContent="indique un risque, un prix d'entrée et un stop loss";}
 
     // Tableau
     var list=[0.01,0.02,0.05,0.1,0.2,0.5,1];
@@ -390,6 +402,7 @@ footer{font-size:12.5px;color:var(--muted);max-width:75ch}
   }
 
   load();
+  $("lots").addEventListener("input",function(){$("autoLots").checked=false});
   ids.forEach(function(i){$(i).addEventListener("input",calc)});
   $("inst").addEventListener("change",function(){
     var k=$("inst").value;if(k!=="CUSTOM"){$("contract").value=SPECS[k].c;$("pointSize").value=SPECS[k].p;$("pipSize").value=SPECS[k].pip}calc()});
@@ -401,6 +414,7 @@ footer{font-size:12.5px;color:var(--muted);max-width:75ch}
     var s=spec(),cu=Math.abs(val("cOut")-val("cIn"))*val("cLots")*s.c,ce=Math.abs(val("cEur"));
     if(cu>0&&ce>0){$("rate").value=(cu/ce).toFixed(4);$("autoRate").checked=false;status("Taux calculé depuis ton trade : la mise à jour automatique est désactivée.");calc()}});
   $("rate").addEventListener("input",function(){if($("autoRate").checked){$("autoRate").checked=false;save()}status("Taux saisi à la main : coche la case pour revenir à la mise à jour automatique.")});
+  $("autoLots").addEventListener("change",calc);
   $("autoRate").addEventListener("change",function(){save();refreshRate()});
   document.addEventListener("visibilitychange",function(){if(document.visibilityState==="visible")refreshRate()});
   setDir(dir);
