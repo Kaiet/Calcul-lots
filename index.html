@@ -1,0 +1,382 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Calcul lots</title>
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Calcul lots">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="theme-color" content="#F2F4F7" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0E131A" media="(prefers-color-scheme: dark)">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" type="image/png" href="icon-192.png">
+<style>
+/* Layout : outil une colonne sur téléphone, saisie à gauche / résultats à droite sur grand écran */
+:root{
+  --bg:#F2F4F7; --surface:#FFFFFF; --ink:#141C28; --muted:#5A6576; --line:#DADFE7;
+  --gold:#A87A22; --gold-soft:#F4EAD6; --loss:#C23F2E; --loss-soft:#F8E3DF; --gain:#1C8556; --gain-soft:#DDF1E6;
+  --f-display:-apple-system,BlinkMacSystemFont,"SF Pro Text",system-ui,"Segoe UI",Roboto,sans-serif;
+  --f-mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0E131A; --surface:#161D27; --ink:#E6EBF1; --muted:#94A0B1; --line:#283241;
+  --gold:#E2B45C; --gold-soft:#2E2617; --loss:#F0735F; --loss-soft:#3A1F1B; --gain:#4BC48D; --gain-soft:#173126; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0E131A; --surface:#161D27; --ink:#E6EBF1; --muted:#94A0B1; --line:#283241;
+  --gold:#E2B45C; --gold-soft:#2E2617; --loss:#F0735F; --loss-soft:#3A1F1B; --gain:#4BC48D; --gain-soft:#173126; color-scheme:dark}
+
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0}
+[hidden]{display:none!important}
+img{max-width:100%}
+body{background:var(--bg);color:var(--ink);font-family:var(--f-display);font-size:15px;line-height:1.45;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-top:max(20px,env(safe-area-inset-top,0px));padding-bottom:max(40px,env(safe-area-inset-bottom,0px))}
+.wrap{max-width:1040px;margin:0 auto;display:flex;flex-direction:column;gap:18px}
+header h1{font-size:clamp(24px,5vw,32px);font-weight:750;font-stretch:85%;letter-spacing:-.01em;margin:0;text-wrap:balance}
+header p{margin:4px 0 0;color:var(--muted);max-width:62ch}
+.grid{display:grid;grid-template-columns:1fr;gap:18px}
+@media (min-width:860px){.grid{grid-template-columns:minmax(0,380px) minmax(0,1fr);align-items:start}}
+.col{display:flex;flex-direction:column;gap:18px;min-width:0}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:16px;display:flex;flex-direction:column;gap:14px}
+.panel h2{font-size:12px;letter-spacing:.09em;text-transform:uppercase;color:var(--muted);margin:0;font-weight:650}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.row3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
+label{display:flex;flex-direction:column;gap:5px;font-size:13px;color:var(--muted);font-weight:500;min-width:0}
+input,select{font:500 16px var(--f-mono);color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px 10px;width:100%;min-width:0}
+input:focus-visible,select:focus-visible,button:focus-visible{outline:2px solid var(--gold);outline-offset:1px}
+.hint{font-size:12.5px;color:var(--muted);margin:0}
+.seg{display:grid;grid-template-columns:1fr 1fr;background:var(--bg);border:1px solid var(--line);border-radius:9px;padding:3px;gap:3px}
+.seg button{font:650 15px var(--f-display);border:0;border-radius:7px;padding:9px;background:transparent;color:var(--muted);cursor:pointer}
+.seg button[aria-pressed="true"].buy{background:var(--gain);color:#fff}
+.seg button[aria-pressed="true"].sell{background:var(--loss);color:#fff}
+button.link{font:600 13px var(--f-display);color:var(--gold);background:none;border:1px solid var(--gold);border-radius:7px;padding:8px 10px;cursor:pointer;align-self:flex-start}
+.num{font-family:var(--f-mono);font-variant-numeric:tabular-nums}
+
+/* Résumé du lot */
+.lot{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+@media (min-width:560px){.lot{grid-template-columns:repeat(4,minmax(0,1fr))}}
+.lot div{background:var(--surface);padding:12px 14px;display:flex;flex-direction:column;gap:2px;min-width:0}
+.lot .k{font-size:12px;color:var(--muted)}
+.lot .v{font:600 19px var(--f-mono);font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.lot .s{font-size:12px;color:var(--muted);font-family:var(--f-mono)}
+.lot .hero{background:var(--gold-soft)}
+.lot .hero .v{color:var(--gold)}
+
+/* Scénarios */
+.scen{display:flex;flex-direction:column;gap:10px}
+.sc{display:grid;grid-template-columns:auto 1fr auto;gap:4px 12px;align-items:center;padding:12px 14px;border-radius:10px;border:1px solid var(--line);background:var(--surface)}
+.sc .tag{font:700 12px var(--f-mono);padding:4px 8px;border-radius:6px;grid-row:span 2;align-self:center;min-width:44px;text-align:center}
+.sc.loss .tag{background:var(--loss-soft);color:var(--loss)}
+.sc.gain .tag{background:var(--gain-soft);color:var(--gain)}
+.sc .d{font-size:13px;color:var(--muted);font-family:var(--f-mono);min-width:0;overflow-wrap:anywhere}
+.sc .eur{font:600 20px var(--f-mono);text-align:right;font-variant-numeric:tabular-nums}
+.sc.loss .eur{color:var(--loss)} .sc.gain .eur{color:var(--gain)}
+.sc .pct{font-size:12.5px;color:var(--muted);text-align:right;font-family:var(--f-mono)}
+.sc .t{font-weight:650}
+.sc .use{grid-column:2/4;justify-self:start;margin-top:4px}
+.sc .use button{padding:5px 9px;font-size:12px}
+.warn{font-size:13px;color:var(--loss);background:var(--loss-soft);border-radius:8px;padding:9px 11px;margin:0}
+.rr{display:flex;flex-wrap:wrap;gap:8px}
+.chip{font:600 13px var(--f-mono);padding:6px 10px;border-radius:999px;border:1px solid var(--line);background:var(--bg)}
+
+/* Échelle de prix */
+.ladder{position:relative;height:210px;margin:4px 0 0 0}
+.ladder .bar{position:absolute;left:0;right:0;top:0;bottom:0}
+.zone{position:absolute;left:96px;width:14px;border-radius:3px}
+.zone.l{background:var(--loss)} .zone.g{background:var(--gain)}
+.mk{position:absolute;left:0;right:0;display:flex;align-items:center;gap:8px;transform:translateY(-50%);font-size:12.5px}
+.mk .p{width:84px;text-align:right;font-family:var(--f-mono);color:var(--muted)}
+.mk .ln{width:30px;height:2px;background:var(--ink);margin-left:4px}
+.mk.e .ln{background:var(--gold);height:3px}
+.mk .lb{font-weight:600;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+/* Tableau */
+.tw{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-size:13.5px}
+th,td{padding:8px 10px;text-align:right;border-bottom:1px solid var(--line);white-space:nowrap}
+th{font-size:11.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);font-weight:600}
+th:first-child,td:first-child{text-align:left}
+td{font-family:var(--f-mono);font-variant-numeric:tabular-nums}
+tr.cur td{background:var(--gold-soft);color:var(--ink)}
+td.l{color:var(--loss)} td.g{color:var(--gain)}
+.big{font:650 26px var(--f-mono);color:var(--gold)}
+details summary{cursor:pointer;font-weight:600;font-size:14px}
+details[open] summary{margin-bottom:12px}
+footer{font-size:12.5px;color:var(--muted);max-width:75ch}
+@media (prefers-reduced-motion:no-preference){.zone,.mk{transition:top .25s ease,height .25s ease}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Calculateur lots et risque</h1>
+    <p>Combien vaut ton volume en euros, combien tu perds au stop loss et combien tu gagnes à chaque take profit. Compte en EUR, instruments cotés en USD.</p>
+  </header>
+
+  <div class="grid">
+    <!-- Saisie -->
+    <div class="col">
+      <section class="panel" aria-labelledby="h-pos">
+        <h2 id="h-pos">Position</h2>
+        <label for="inst">Instrument
+          <select id="inst">
+            <option value="XAUUSD">XAUUSD · Or (100 oz / lot)</option>
+            <option value="XAGUSD">XAGUSD · Argent (5 000 oz / lot)</option>
+            <option value="BTCUSD">BTCUSD · Bitcoin (1 BTC / lot)</option>
+            <option value="ETHUSD">ETHUSD · Ether (1 ETH / lot)</option>
+            <option value="EURUSD">EURUSD (100 000 € / lot)</option>
+            <option value="GBPUSD">GBPUSD (100 000 £ / lot)</option>
+            <option value="CUSTOM">Autre (taille de contrat manuelle)</option>
+          </select>
+        </label>
+        <div class="row" id="customRow" hidden>
+          <label for="contract">Taille du contrat
+            <input id="contract" type="number" inputmode="decimal" step="any" value="100">
+          </label>
+          <label for="pointSize">Valeur d'un point
+            <input id="pointSize" type="number" inputmode="decimal" step="any" value="0.01">
+          </label>
+        </div>
+        <div class="seg" role="group" aria-label="Sens">
+          <button type="button" class="buy" id="dirBuy" aria-pressed="false">Buy</button>
+          <button type="button" class="sell" id="dirSell" aria-pressed="true">Sell</button>
+        </div>
+        <div class="row">
+          <label for="lots">Volume (lots)
+            <input id="lots" type="number" inputmode="decimal" step="0.01" min="0" value="0.05">
+          </label>
+          <label for="entry">Prix d'entrée
+            <input id="entry" type="number" inputmode="decimal" step="any" value="4070">
+          </label>
+        </div>
+        <div class="row">
+          <label for="sl">Stop loss
+            <input id="sl" type="number" inputmode="decimal" step="any" value="4085">
+          </label>
+          <label for="pipSize">Taille d'un pip
+            <input id="pipSize" type="number" inputmode="decimal" step="any" value="0.1">
+          </label>
+        </div>
+        <div class="row3">
+          <label for="tp1">TP 1
+            <input id="tp1" type="number" inputmode="decimal" step="any" value="4055">
+          </label>
+          <label for="tp2">TP 2
+            <input id="tp2" type="number" inputmode="decimal" step="any" value="4040">
+          </label>
+          <label for="tp3">TP 3
+            <input id="tp3" type="number" inputmode="decimal" step="any" placeholder="—">
+          </label>
+        </div>
+        <p class="hint">Laisse un TP vide pour l'ignorer. Sur l'or, 1 pip = 0,10 $ de variation (10 points MetaTrader). Certains sites comptent 0,01 $ ou 1 $ : change la taille du pip pour suivre leur convention.</p>
+      </section>
+
+      <section class="panel" aria-labelledby="h-cpt">
+        <h2 id="h-cpt">Compte</h2>
+        <div class="row">
+          <label for="balance">Solde (€)
+            <input id="balance" type="number" inputmode="decimal" step="any" placeholder="ex. 3000">
+          </label>
+          <label for="rate">Taux EUR/USD
+            <input id="rate" type="number" inputmode="decimal" step="0.0001" value="1.1122">
+          </label>
+        </div>
+        <p class="hint">Le solde ne compte pas le crédit bonus de 2 000 €. Le taux EUR/USD se lit dans l'onglet Cotations ; 1,1122 est celui déduit de ton trade du 28/10.</p>
+        <label for="lev">Levier (facultatif, pour la marge)
+          <input id="lev" type="number" inputmode="numeric" step="1" placeholder="ex. 100 pour 1:100">
+        </label>
+        <details>
+          <summary>Retrouver le taux exact depuis un trade clôturé</summary>
+          <div class="col" style="gap:12px">
+            <div class="row">
+              <label for="cIn">Prix d'entrée<input id="cIn" type="number" inputmode="decimal" step="any" value="4070"></label>
+              <label for="cOut">Prix de sortie<input id="cOut" type="number" inputmode="decimal" step="any" value="4040"></label>
+            </div>
+            <div class="row">
+              <label for="cLots">Lots<input id="cLots" type="number" inputmode="decimal" step="0.01" value="0.05"></label>
+              <label for="cEur">Résultat affiché (€)<input id="cEur" type="number" inputmode="decimal" step="any" value="134.87"></label>
+            </div>
+            <p class="hint" id="cOutTxt"></p>
+            <button type="button" class="link" id="cApply">Utiliser ce taux</button>
+          </div>
+        </details>
+      </section>
+    </div>
+
+    <!-- Résultats -->
+    <div class="col">
+      <section class="lot" aria-label="Valeur du volume" id="lotBox"></section>
+
+      <section class="panel" aria-labelledby="h-sc">
+        <h2 id="h-sc">Scénarios</h2>
+        <p class="warn" id="warn" hidden></p>
+        <div class="scen" id="scen"></div>
+        <div class="rr" id="rr"></div>
+        <div class="ladder" id="ladder" aria-hidden="true"></div>
+      </section>
+
+      <section class="panel" aria-labelledby="h-r">
+        <h2 id="h-r">Objectifs en R</h2>
+        <p class="hint">1 R = la distance entre ton entrée et ton stop loss, c'est-à-dire ce que tu risques. 2 R = un TP deux fois plus loin, qui rapporte deux fois ton risque.</p>
+        <p class="chip" id="rinfo" style="margin:0;border-radius:8px"></p>
+        <div class="scen" id="rlev"></div>
+      </section>
+
+      <section class="panel" aria-labelledby="h-inv">
+        <h2 id="h-inv">Quel volume pour un risque donné ?</h2>
+        <div class="row">
+          <label for="riskEur">Risque max (€)
+            <input id="riskEur" type="number" inputmode="decimal" step="any" value="50">
+          </label>
+          <label for="riskPct">ou en % du solde
+            <input id="riskPct" type="number" inputmode="decimal" step="0.1" placeholder="ex. 1">
+          </label>
+        </div>
+        <div><span class="big num" id="invLots">—</span> <span class="hint" id="invTxt"></span></div>
+      </section>
+
+      <section class="panel" aria-labelledby="h-tab">
+        <h2 id="h-tab">Comparatif des volumes</h2>
+        <div class="tw"><table id="tab"></table></div>
+      </section>
+    </div>
+  </div>
+
+  <footer>Calcul théorique : gain ou perte = écart de prix × lots × taille du contrat, converti en euros. Le spread, les swaps (positions gardées la nuit) et le glissement en cas de forte volatilité ne sont pas inclus : la perte réelle au stop peut être un peu plus forte. Vérifie la taille de contrat dans MetaTrader (Cotations → appui long sur le symbole → Spécification).</footer>
+</div>
+
+<script>
+(function(){
+  var SPECS={XAUUSD:{c:100,p:0.01,pip:0.1,u:"oz d'or"},XAGUSD:{c:5000,p:0.001,pip:0.01,u:"oz d'argent"},BTCUSD:{c:1,p:0.01,pip:1,u:"BTC"},ETHUSD:{c:1,p:0.01,pip:0.1,u:"ETH"},EURUSD:{c:100000,p:0.00001,pip:0.0001,u:"€"},GBPUSD:{c:100000,p:0.00001,pip:0.0001,u:"£"},CUSTOM:{c:100,p:0.01,pip:0.1,u:"unités"}};
+  var $=function(id){return document.getElementById(id)};
+  var ids=["inst","contract","pointSize","pipSize","lots","entry","sl","tp1","tp2","tp3","balance","rate","lev","riskEur","riskPct","cIn","cOut","cLots","cEur"];
+  var dir=-1; // -1 sell, 1 buy
+  var KEY="calc-lots-v1";
+
+  function nf(v,d){if(!isFinite(v))return "—";return v.toLocaleString("fr-FR",{minimumFractionDigits:d,maximumFractionDigits:d})}
+  function eur(v){return nf(v,2)+" €"}
+  function usd(v){return nf(v,2)+" $"}
+  function val(id){var s=$(id).value;if(s===""||s==null)return NaN;return parseFloat(String(s).replace(",","."))}
+  function spec(){var k=$("inst").value;if(k==="CUSTOM")return{c:val("contract"),p:val("pointSize"),u:"unités"};return SPECS[k]}
+  function decs(p){var s=String(p);return s.indexOf(".")<0?0:s.split(".")[1].length}
+
+  function save(){try{var o={dir:dir};ids.forEach(function(i){o[i]=$(i).value});localStorage.setItem(KEY,JSON.stringify(o))}catch(e){}}
+  function load(){try{var o=JSON.parse(localStorage.getItem(KEY)||"null");if(!o)return;ids.forEach(function(i){if(o[i]!=null)$(i).value=o[i]});if(o.dir)dir=o.dir;if(o.pipSize==null&&SPECS[o.inst])$("pipSize").value=SPECS[o.inst].pip}catch(e){}}
+
+  function setDir(d){dir=d;$("dirBuy").setAttribute("aria-pressed",d===1);$("dirSell").setAttribute("aria-pressed",d===-1);calc()}
+
+  function calc(){
+    var s=spec(),lots=val("lots"),entry=val("entry"),sl=val("sl"),rate=val("rate"),bal=val("balance"),lev=val("lev");
+    $("customRow").hidden=$("inst").value!=="CUSTOM";
+    var units=lots*s.c;                       // ex. 0,05 × 100 = 5 oz
+    var perUsdMove=units;                     // $ gagnés/perdus par 1 $ de mouvement
+    var perPoint=units*s.p;                   // $ par point
+    var notionalUsd=units*entry;
+    var marginEur=(isFinite(lev)&&lev>0)?notionalUsd/lev/rate:NaN;
+    var pd=decs(s.p);
+    var pip=val("pipSize");if(!(pip>0))pip=s.pip||s.p;var perPip=units*pip;
+    function fp(d){var v=Math.abs(d)/pip;return nf(v,Math.abs(v-Math.round(v))<1e-6?0:1)+" pips"}
+
+    var unitTxt=$("inst").value.slice(0,3)==="EUR"||$("inst").value.slice(0,3)==="GBP"?nf(units,0)+" "+s.u:nf(units,units<10?2:0)+" "+s.u;
+    $("lotBox").innerHTML=
+      '<div class="hero"><span class="k">'+nf(lots,2)+' lot =</span><span class="v">'+unitTxt+'</span><span class="s">contrat '+nf(s.c,0)+' / lot</span></div>'+
+      '<div><span class="k">Mouvement de 1 $</span><span class="v">'+eur(perUsdMove/rate)+'</span><span class="s">'+usd(perUsdMove)+'</span></div>'+
+      '<div><span class="k">1 pip ('+nf(pip,decs(pip))+')</span><span class="v">'+nf(perPip/rate,perPip/rate<0.1?4:2)+' €</span><span class="s">1 point = '+nf(perPoint/rate,perPoint/rate<0.1?4:2)+' €</span></div>'+
+      '<div><span class="k">Valeur exposée</span><span class="v">'+nf(notionalUsd/rate,0)+' €</span><span class="s">'+(isFinite(marginEur)?'marge ≈ '+eur(marginEur):nf(notionalUsd,0)+' $')+'</span></div>';
+
+    // Scénarios
+    var rows=[],warn=[];
+    function pnl(price){return (price-entry)*dir*units}
+    var slUsd=NaN,slEur=NaN;
+    if(isFinite(sl)){
+      slUsd=pnl(sl);slEur=slUsd/rate;
+      if(slUsd>0)warn.push("Le stop loss est du mauvais côté : en "+(dir===1?"buy, il doit être sous":"sell, il doit être au-dessus de")+" l'entrée.");
+      rows.push({cls:"loss",tag:"SL",t:"Stop loss à "+nf(sl,pd)+" · "+fp(sl-entry),d:"écart "+nf(Math.abs(sl-entry),pd)+" · "+nf(Math.abs(sl-entry)/s.p,0)+" points",e:slEur,u:slUsd});
+    }
+    var tps=[];
+    ["tp1","tp2","tp3"].forEach(function(k,i){var p=val(k);if(!isFinite(p))return;var u=pnl(p);tps.push({n:i+1,p:p,u:u});
+      if(u<0)warn.push("Le TP "+(i+1)+" est du mauvais côté de l'entrée.");
+      rows.push({cls:u>=0?"gain":"loss",tag:"TP"+(i+1),t:"Take profit à "+nf(p,pd)+" · "+fp(p-entry),d:"écart "+nf(Math.abs(p-entry),pd)+" · "+nf(Math.abs(p-entry)/s.p,0)+" points",e:u/rate,u:u});
+    });
+    $("scen").innerHTML=rows.map(function(r){
+      var pct=isFinite(bal)&&bal>0?(r.e/bal*100):NaN;
+      return '<div class="sc '+r.cls+'"><span class="tag">'+r.tag+'</span><span class="t">'+r.t+'</span><span class="eur">'+(r.e>=0?"+":"−")+eur(Math.abs(r.e))+'</span><span class="d">'+r.d+' · '+usd(r.u)+'</span><span class="pct">'+(isFinite(pct)?(pct>=0?"+":"−")+nf(Math.abs(pct),2)+" % du solde":"")+'</span></div>';
+    }).join("")||'<p class="hint">Renseigne un stop loss ou un TP.</p>';
+    $("warn").hidden=!warn.length;$("warn").textContent=warn.join(" ");
+    $("rr").innerHTML=(isFinite(slUsd)&&slUsd<0)?tps.filter(function(t){return t.u>0}).map(function(t){return '<span class="chip">TP'+t.n+' · ratio 1 : '+nf(t.u/Math.abs(slUsd),2)+'</span>'}).join(""):"";
+
+    // Objectifs en R
+    var dR=Math.abs(sl-entry);
+    if(isFinite(dR)&&dR>0&&isFinite(slUsd)&&slUsd<0){
+      var r1=dR*units/rate;
+      $("rinfo").textContent="1 R = "+fp(dR)+" ("+nf(dR,pd)+" d'écart) = "+eur(r1)+" de risque"+(bal>0?" · "+nf(r1/bal*100,2)+" % du solde":"");
+      $("rlev").innerHTML=[1,2,3].map(function(k){
+        var tgt=entry+dir*k*dR,g=k*r1;
+        return '<div class="sc gain"><span class="tag">'+k+'R</span><span class="t">TP à '+nf(tgt,pd)+' · '+fp(k*dR)+'</span><span class="eur">+'+eur(g)+'</span><span class="d">écart '+nf(k*dR,pd)+' · '+usd(k*dR*units)+'</span><span class="pct">'+(bal>0?"+"+nf(g/bal*100,2)+" % du solde":"")+'</span><span class="use"><button type="button" class="link" data-p="'+tgt.toFixed(pd)+'" data-tp="tp'+k+'">Mettre en TP'+k+'</button></span></div>';
+      }).join("");
+    }else{$("rinfo").textContent="Renseigne un stop loss du bon côté de l'entrée pour calculer le R.";$("rlev").innerHTML="";}
+
+    // Échelle
+    var pts=[{p:entry,l:"Entrée "+(dir===1?"buy":"sell"),c:"e"}];
+    if(isFinite(sl))pts.push({p:sl,l:"SL  "+(slEur>=0?"+":"−")+eur(Math.abs(slEur))+" · "+fp(sl-entry),c:"s"});
+    tps.forEach(function(t){pts.push({p:t.p,l:"TP"+t.n+"  "+(t.u>=0?"+":"−")+eur(Math.abs(t.u/rate))+" · "+fp(t.p-entry),c:"t"})});
+    var ps=pts.map(function(x){return x.p}).filter(isFinite),mx=Math.max.apply(null,ps),mn=Math.min.apply(null,ps),H=210,pad=12;
+    function y(p){return mx===mn?H/2:pad+(mx-p)/(mx-mn)*(H-2*pad)}
+    var html="";
+    if(isFinite(sl)){var a=y(entry),b=y(sl);html+='<div class="zone l" style="top:'+Math.min(a,b)+'px;height:'+Math.abs(a-b)+'px"></div>'}
+    var far=tps.filter(function(t){return t.u>0}).sort(function(a,b){return Math.abs(b.p-entry)-Math.abs(a.p-entry)})[0];
+    if(far){var a2=y(entry),b2=y(far.p);html+='<div class="zone g" style="top:'+Math.min(a2,b2)+'px;height:'+Math.abs(a2-b2)+'px"></div>'}
+    pts.forEach(function(x){if(!isFinite(x.p))return;html+='<div class="mk '+x.c+'" style="top:'+y(x.p)+'px"><span class="p">'+nf(x.p,pd)+'</span><span class="ln"></span><span class="lb">'+x.l+'</span></div>'});
+    $("ladder").innerHTML=html;
+
+    // Inverse
+    var rEur=val("riskEur"),rPct=val("riskPct");
+    if(isFinite(rPct)&&rPct>0&&isFinite(bal))rEur=bal*rPct/100;
+    var dist=Math.abs(sl-entry);
+    if(isFinite(rEur)&&rEur>0&&dist>0&&isFinite(dist)){
+      var lotsMax=Math.floor((rEur*rate)/(dist*s.c)*100+1e-9)/100;
+      $("invLots").textContent=nf(lotsMax,2)+" lot";
+      $("invTxt").textContent=lotsMax>0?"max pour risquer "+eur(rEur)+" avec un stop à "+fp(dist)+" de l'entrée (perte réelle : "+eur(lotsMax*s.c*dist/rate)+")":"le stop est trop loin pour ce risque, même à 0,01 lot ("+eur(0.01*s.c*dist/rate)+")";
+    }else{$("invLots").textContent="—";$("invTxt").textContent="indique un risque et un stop loss";}
+
+    // Tableau
+    var list=[0.01,0.02,0.05,0.1,0.2,0.5,1];
+    if(list.indexOf(Math.round(lots*100)/100)<0&&isFinite(lots)&&lots>0){list.push(Math.round(lots*100)/100);list.sort(function(a,b){return a-b})}
+    var tp=tps.length?tps[tps.length-1]:null;
+    var th='<tr><th>Lots</th><th>Par pip</th><th>Par 1 $</th><th>Au SL</th><th>'+(tp?"Au TP"+tp.n:"Au TP")+'</th><th>% solde au SL</th></tr>';
+    $("tab").innerHTML=th+list.map(function(L){
+      var u=L*s.c,sle=isFinite(sl)?(sl-entry)*dir*u/rate:NaN,tpe=tp?(tp.p-entry)*dir*u/rate:NaN;
+      var cur=Math.abs(L-lots)<1e-9?' class="cur"':'';
+      return '<tr'+cur+'><td>'+nf(L,2)+'</td><td>'+nf(u*pip/rate,u*pip/rate<0.1?3:2)+' €</td><td>'+eur(u/rate)+'</td><td class="l">'+(isFinite(sle)?eur(sle):"—")+'</td><td class="g">'+(isFinite(tpe)?"+"+eur(tpe):"—")+'</td><td>'+(isFinite(sle)&&bal>0?nf(sle/bal*100,2)+" %":"—")+'</td></tr>';
+    }).join("");
+
+    // Calibration
+    var cu=Math.abs(val("cOut")-val("cIn"))*val("cLots")*s.c,ce=Math.abs(val("cEur"));
+    $("cOutTxt").textContent=(cu>0&&ce>0)?"Écart "+usd(cu)+" pour "+eur(ce)+" affichés → EUR/USD ≈ "+nf(cu/ce,4)+" (même instrument que ci-dessus)":"Renseigne un trade clôturé.";
+    save();
+  }
+
+  load();
+  ids.forEach(function(i){$(i).addEventListener("input",calc)});
+  $("inst").addEventListener("change",function(){
+    var k=$("inst").value;if(k!=="CUSTOM"){$("contract").value=SPECS[k].c;$("pointSize").value=SPECS[k].p;$("pipSize").value=SPECS[k].pip}calc()});
+  $("riskEur").addEventListener("input",function(){$("riskPct").value=""});
+  $("dirBuy").addEventListener("click",function(){setDir(1)});
+  $("dirSell").addEventListener("click",function(){setDir(-1)});
+  $("rlev").addEventListener("click",function(e){var b=e.target.closest("button[data-tp]");if(!b)return;$(b.dataset.tp).value=b.dataset.p;calc()});
+  $("cApply").addEventListener("click",function(){
+    var s=spec(),cu=Math.abs(val("cOut")-val("cIn"))*val("cLots")*s.c,ce=Math.abs(val("cEur"));
+    if(cu>0&&ce>0){$("rate").value=(cu/ce).toFixed(4);calc()}});
+  setDir(dir);
+})();
+</script>
+
+<script>
+if("serviceWorker" in navigator){window.addEventListener("load",function(){navigator.serviceWorker.register("sw.js").catch(function(){})})}
+</script>
+</body>
+</html>
